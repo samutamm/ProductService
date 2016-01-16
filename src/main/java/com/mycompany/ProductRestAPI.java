@@ -1,28 +1,34 @@
 package com.mycompany;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import com.mycompany.domain.*;
 import com.mycompany.domain.Error;
+import com.mycompany.rest.ApiResponse;
+import com.mycompany.rest.Http;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.Morphia;
 
 import java.lang.management.ManagementFactory;
+import spark.Response;
 
-import static spark.Spark.get;
-import static spark.Spark.post;
-import static spark.Spark.halt;
+import static spark.Spark.*;
 import static spark.SparkBase.port;
 
 public class ProductRestAPI {
 
+    private Http http;
+    private String personURL = "http://localhost:4567/";
     private Gson gson;
     private Morphia morphia;
     private Datastore datastore;
 
     public ProductRestAPI() {
         this.gson = new Gson();
+        this.http = new Http();
         setUpDB();
         configure();
         createRoutes();
@@ -49,6 +55,21 @@ public class ProductRestAPI {
             String dir = System.getProperty("user.dir");
 
             return "{ \"name\": \"" + name + "\", \"dir\": \"" + dir + "\" }";
+        });
+
+        before("/products", (spark.Request request, Response response) -> {
+            String authorization = request.headers("Authorization");
+            System.out.println("AUTH: " + authorization);
+            if ( request.requestMethod().equals("GET")) {
+                ApiResponse apiResponse = http
+                        .get(http.endpointForTokens() + "/" + authorization);
+                JsonObject json = new JsonParser()
+                        .parse(apiResponse.getJson())
+                        .getAsJsonObject();
+                if (json.get("valid").toString().equals("false")) {
+                    halt(401, gson.toJson(Error.withCause("missing or invalid token")));
+                }
+            }
         });
 
         get("/products", (request, response) -> {
